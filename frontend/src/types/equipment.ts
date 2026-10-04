@@ -1,11 +1,13 @@
+import type { OwnedRecord } from './ownership';
+
 /** 终端类型 */
 export type TerminalType = 'CMOS 相机' | '导星相机' | '光谱仪';
 
 /** 望远镜状态 */
 export type TelescopeStatus = '可用' | '维护中' | '外出';
 
-/** 望远镜 */
-export interface Telescope {
+/** 望远镜（归值班排程员，只存在于编排库） */
+export interface Telescope extends OwnedRecord {
   id: string;
   /** 编号 */
   code: string;
@@ -23,8 +25,8 @@ export interface Telescope {
   status: TelescopeStatus;
 }
 
-/** 终端（相机 / 导星相机 / 光谱仪） */
-export interface Instrument {
+/** 终端（相机 / 导星相机 / 光谱仪，归值班排程员，只存在于编排库） */
+export interface Instrument extends OwnedRecord {
   id: string;
   /** 型号 */
   model: string;

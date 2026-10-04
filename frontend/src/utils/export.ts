@@ -48,7 +48,9 @@ export function buildNightPlanText(context: PlanContext): string {
   const totalFrames = ordered.reduce((sum, session) => sum + session.plannedFrames, 0);
   const totalExposure = ordered.reduce((sum, session) => {
     const target = targets.find((item) => item.id === session.targetId);
-    return sum + (target ? (session.plannedFrames * target.exposureSec) / 60 : 0);
+    // 优先用排程时固化的快照曝光参数，避免协调员改参数后导出的清单与实际排程不一致
+    const exposureSec = session.targetSnapshot?.exposureSec ?? target?.exposureSec ?? 0;
+    return sum + (session.plannedFrames * exposureSec) / 60;
   }, 0);
   lines.push(`合计排程段 ${ordered.length} 段，计划帧数 ${totalFrames} 帧，预计曝光 ${totalExposure.toFixed(1)} 分钟`);
   lines.push(`导出时间：${new Date().toLocaleString('zh-CN')}`);
@@ -76,7 +78,7 @@ export function buildPlanCsv(context: PlanContext): string {
         instrument?.model ?? '',
         session.filterSlot,
         String(session.plannedFrames),
-        target ? String(target.exposureSec) : '',
+        String(session.targetSnapshot?.exposureSec ?? target?.exposureSec ?? ''),
         session.status,
         session.rescheduleReason ?? '',
       ];

@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useSessionStore } from '../stores/sessionStore';
-import type { ConflictItem, ObsSession } from '../types';
+import { isConfirmedSession, type ConflictItem, type ObsSession } from '../types';
 import { overlapMinutes } from '../utils/astro';
 
 export interface ConflictCheckInput {
@@ -25,6 +25,8 @@ function describe(a: ObsSession, b: ObsSession): ConflictItem | null {
   if (a.nightId !== b.nightId || a.telescopeId !== b.telescopeId || a.id === b.id) {
     return null;
   }
+  // 待重排 / 排队顺延段已经让出望远镜，不参与冲突
+  if (!isConfirmedSession(a) || !isConfirmedSession(b)) return null;
   const overlap = overlapMinutes(a.startTime, a.endTime, b.startTime, b.endTime);
   if (overlap <= 0) {
     return null;
@@ -57,7 +59,9 @@ export function useConflictCheck(): ConflictCheckApi {
         filterSlot: '',
         plannedFrames: 0,
         status: '待执行',
-        schemaVersion: 2,
+        targetSnapshot: { revision: 0, minAltitude: 0, exposureSec: 0, totalMinutes: 0, filter: '无滤镜' },
+        owner: 'plan',
+        schemaVersion: 3,
       };
       return sessions
         .filter((session) => session.id !== input.ignoreSessionId)

@@ -19,6 +19,7 @@ import { useNightStore } from './stores/nightStore';
 import { useSessionStore } from './stores/sessionStore';
 import { useTargetStore } from './stores/targetStore';
 import { useEquipmentStore } from './stores/equipmentStore';
+import { isConfirmedSession } from './types';
 
 const DRAWER_WIDTH = 224;
 
@@ -47,7 +48,7 @@ export default function App() {
   const quickExport = () => {
     const text = buildNightPlanText({
       night,
-      sessions: sessions.filter((session) => session.nightId === night?.id),
+      sessions: sessions.filter((session) => session.nightId === night?.id && isConfirmedSession(session)),
       targets,
       telescopes,
       instruments,
@@ -124,7 +125,7 @@ export default function App() {
         )}
         <Box sx={{ mt: 4, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
           <Typography variant="caption" color="text.secondary">
-            数据保存在浏览器 IndexedDB（gbobsplan-db），不使用数据库服务、不挂载命名卷
+            数据保存在浏览器 IndexedDB 两个独立库：gbobsplan-catalog-db（目标库·协调员）与 gbobsplan-plan-db（编排表·排程员），互不连坐、不使用数据库服务、不挂载命名卷
           </Typography>
         </Box>
       </Box>

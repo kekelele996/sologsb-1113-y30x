@@ -18,7 +18,7 @@ import { useNightStore } from '../stores/nightStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useTargetStore } from '../stores/targetStore';
 import { useEquipmentStore } from '../stores/equipmentStore';
-import { NIGHT_TOTAL_MINUTES, TARGET_COLOR } from '../types';
+import { NIGHT_TOTAL_MINUTES, TARGET_COLOR, isConfirmedSession } from '../types';
 import { altitudeAt, axisMinutes, isBelowThreshold, minutesToTime, moonBrightnessFactor, moonConflict, moonPhaseText, timelineTicks } from '../utils/astro';
 
 /** 本夜编排总览：30 分钟刻度时间轴 + 月相与月出月落条带 + 冲突与标灰提示 */
@@ -34,7 +34,11 @@ export default function OverviewPage() {
   const { conflictIds, conflictsOfNight } = useConflictCheck();
 
   const night = nights.find((item) => item.id === currentNightId) ?? nights[0];
-  const nightSessions = useMemo(() => sessions.filter((session) => session.nightId === night?.id), [sessions, night?.id]);
+  const nightSessionsAll = useMemo(() => sessions.filter((session) => session.nightId === night?.id), [sessions, night?.id]);
+  /** 时间轴 / 占用统计只看已确认段：待重排、排队顺延已让出望远镜 */
+  const nightSessions = useMemo(() => nightSessionsAll.filter((session) => isConfirmedSession(session)), [nightSessionsAll]);
+  /** 待排程员处理的段（待重排 + 排队顺延） */
+  const pendingSessions = useMemo(() => nightSessionsAll.filter((session) => session.status === '待重排' || session.status === '排队顺延'), [nightSessionsAll]);
   const ids = useMemo(() => conflictIds(night?.id), [conflictIds, night?.id]);
   const conflicts = useMemo(() => conflictsOfNight(night?.id ?? ''), [conflictsOfNight, night?.id]);
 
@@ -103,7 +107,8 @@ export default function OverviewPage() {
         本夜编排总览
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        按 30 分钟刻度展示时间轴与已排程段，月相与月出月落条带悬浮于时间轴上方；低于最小地平高度阈值的目标自动标灰。
+        按 30 分钟刻度展示已确认排程段，月相与月出月落条带悬浮于时间轴上方；低于最小地平高度阈值的目标自动标灰。
+        待重排与排队顺延的段已让出望远镜、不占时间轴，统一列在下方等排程员处理。
       </Typography>
 
       <Stack direction="row" spacing={2} sx={{ mb: 2, flexWrap: 'wrap' }} alignItems="center">
@@ -120,11 +125,11 @@ export default function OverviewPage() {
         <ConflictBadge conflicts={conflicts} />
       </Stack>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 2, mb: 2 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(5, 1fr)' }, gap: 2, mb: 2 }}>
         <Card variant="outlined">
           <CardContent>
             <Typography variant="caption" color="text.secondary">
-              本夜排程段
+              本夜已确认排程段
             </Typography>
             <Typography variant="h5">{nightSessions.length}</Typography>
           </CardContent>
@@ -154,6 +159,16 @@ export default function OverviewPage() {
             </Typography>
             <Typography variant="h5" color={dimmedTargets.length ? 'warning.main' : 'success.main'}>
               {dimmedTargets.length}
+            </Typography>
+          </CardContent>
+        </Card>
+        <Card variant="outlined">
+          <CardContent>
+            <Typography variant="caption" color="text.secondary">
+              待重排 / 顺延
+            </Typography>
+            <Typography variant="h5" color={pendingSessions.length ? 'warning.main' : 'success.main'}>
+              {pendingSessions.length}
             </Typography>
           </CardContent>
         </Card>
@@ -242,7 +257,7 @@ export default function OverviewPage() {
 
       <Box sx={{ mt: 2 }}>
         <Typography variant="subtitle1" sx={{ mb: 1 }}>
-          本夜排程段（{nightSessions.length} 段）
+          本夜已确认排程段（{nightSessions.length} 段）
         </Typography>
         <Stack spacing={1}>
           {[...nightSessions]
@@ -258,10 +273,13 @@ export default function OverviewPage() {
                       <Typography variant="subtitle2">{target ? `${target.name}（${target.catalog}）` : '未知目标'}</Typography>
                       <Chip size="small" variant="outlined" label={`${telescopeById(session.telescopeId)?.code ?? '-'} / ${instrumentById(session.instrumentId)?.model ?? '-'}`} />
                       <Chip size="small" variant="outlined" label={`滤镜 ${session.filterSlot}`} />
-                      <Chip size="small" variant="outlined" label={`${session.plannedFrames} 帧 × ${target?.exposureSec ?? '-'}s`} />
+                      <Chip size="small" variant="outlined" label={`${session.plannedFrames} 帧 × ${session.targetSnapshot?.exposureSec ?? target?.exposureSec ?? '-'}s`} />
                       <StatusChip status={session.status} />
                       {ids.has(session.id) ? <Chip size="small" color="error" label="时段冲突" /> : null}
                       {altitude?.below ? <Chip size="small" color="warning" label={`高度角 ${altitude.altitude}° 低于阈值 ${target?.minAltitude}°`} /> : <Chip size="small" color="success" variant="outlined" label={`高度角 ${altitude?.altitude ?? '-'}°`} />}
+                      {session.targetSnapshot && target && session.targetSnapshot.revision < target.revision ? (
+                        <Chip size="small" color="warning" variant="outlined" label={`快照 v${session.targetSnapshot.revision} 落后于目标 v${target.revision}`} />
+                      ) : null}
                       {session.rescheduleReason ? <Typography variant="caption" color="text.secondary">{session.rescheduleReason}</Typography> : null}
                     </Stack>
                   </CardContent>
@@ -270,6 +288,34 @@ export default function OverviewPage() {
             })}
         </Stack>
       </Box>
+
+      {pendingSessions.length > 0 ? (
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="subtitle1" sx={{ mb: 1, color: 'warning.main' }}>
+            待重排队列（{pendingSessions.length} 段，已让出本夜望远镜，等排程员重排）
+          </Typography>
+          <Stack spacing={1}>
+            {pendingSessions.map((session) => {
+              const target = targetById(session.targetId);
+              return (
+                <Card key={session.id} variant="outlined" sx={{ borderColor: 'warning.main', borderStyle: 'dashed' }}>
+                  <CardContent sx={{ py: 1.25, '&:last-child': { pb: 1.25 } }}>
+                    <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+                      <Chip size="small" label={`${session.startTime}-${session.endTime}`} />
+                      <Typography variant="subtitle2">{target ? `${target.name}（${target.catalog}）` : '未知目标'}</Typography>
+                      <Chip size="small" variant="outlined" label={`${telescopeById(session.telescopeId)?.code ?? '-'} / ${instrumentById(session.instrumentId)?.model ?? '-'}`} />
+                      <StatusChip status={session.status} />
+                      <Typography variant="caption" color="warning.main">
+                        {session.invalidReason ?? '等待排程员重新排定'}
+                      </Typography>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </Stack>
+        </Box>
+      ) : null}
     </Box>
   );
 }

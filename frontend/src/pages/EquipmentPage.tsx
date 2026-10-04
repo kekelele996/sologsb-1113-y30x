@@ -23,7 +23,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { useNightStore } from '../stores/nightStore';
 import { useTargetStore } from '../stores/targetStore';
 import { useEquipmentStore } from '../stores/equipmentStore';
-import { NIGHT_TOTAL_MINUTES, TARGET_COLOR } from '../types';
+import { NIGHT_TOTAL_MINUTES, TARGET_COLOR, isConfirmedSession } from '../types';
 import { axisMinutes, minutesToTime } from '../utils/astro';
 
 const SLOT_MINUTES = 30;
@@ -45,7 +45,10 @@ export default function EquipmentPage() {
   const [nightId, setNightId] = useState(currentNightId);
   const activeNightId = nightId || currentNightId;
   const night = nights.find((item) => item.id === activeNightId);
-  const nightSessions = useMemo(() => sessions.filter((session) => session.nightId === activeNightId), [sessions, activeNightId]);
+  const nightSessions = useMemo(
+    () => sessions.filter((session) => session.nightId === activeNightId && isConfirmedSession(session)),
+    [sessions, activeNightId],
+  );
   const conflicts = useMemo(() => conflictsOfNight(activeNightId), [conflictsOfNight, activeNightId]);
   const slots = useMemo(() => Array.from({ length: NIGHT_TOTAL_MINUTES / SLOT_MINUTES }, (_, index) => index), []);
 

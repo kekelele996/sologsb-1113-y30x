@@ -17,7 +17,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { useNightStore } from '../stores/nightStore';
 import { useTargetStore } from '../stores/targetStore';
 import { useEquipmentStore } from '../stores/equipmentStore';
-import { NIGHT_TOTAL_MINUTES, TARGET_COLOR } from '../types';
+import { NIGHT_TOTAL_MINUTES, TARGET_COLOR, isConfirmedSession } from '../types';
 import { axisMinutes, timelineTicks } from '../utils/astro';
 import { buildNightPlanText, buildPlanCsv, downloadText, printPage } from '../utils/export';
 
@@ -35,7 +35,11 @@ export default function ExportPage() {
   const [notice, setNotice] = useState('');
 
   const night = nights.find((item) => item.id === currentNightId) ?? nights[0];
-  const nightSessions = useMemo(() => sessions.filter((session) => session.nightId === night?.id), [sessions, night?.id]);
+  /** 导出只含已确认占用本夜的段；待重排 / 排队顺延不进观测清单（避免按过期参数执行） */
+  const nightSessions = useMemo(
+    () => sessions.filter((session) => session.nightId === night?.id && isConfirmedSession(session)),
+    [sessions, night?.id],
+  );
   const conflicts = useMemo(() => conflictsOfNight(night?.id ?? ''), [conflictsOfNight, night?.id]);
   const ids = useMemo(() => conflictIds(night?.id), [conflictIds, night?.id]);
 

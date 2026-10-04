@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { db, deleteRow, persistRow } from '../hooks/usePersistentStore';
+import { planDb } from '../db/planDb';
+import { OWNER_PLAN, assertOwner, type FieldOfView, type Instrument, type Telescope, type TelescopeStatus, type TerminalType } from '../types';
 import { uid } from '../utils/id';
-import type { FieldOfView, Instrument, Telescope, TelescopeStatus, TerminalType } from '../types';
 
 export interface TelescopeInput {
   code: string;
@@ -40,14 +40,14 @@ interface EquipmentState {
 
 const RAD = Math.PI / 180;
 
-/** 望远镜与终端分配（含视场角换算） */
+/** 望远镜与终端（值班排程员）：只写 planDb；目标库碰不到设备数据 */
 export const useEquipmentStore = create<EquipmentState>()((set, get) => ({
   telescopes: [],
   instruments: [],
   hydrated: false,
 
   hydrate: async () => {
-    const [telescopes, instruments] = await Promise.all([db.telescopes.orderBy('code').toArray(), db.instruments.toArray()]);
+    const [telescopes, instruments] = await Promise.all([planDb.telescopes.orderBy('code').toArray(), planDb.instruments.toArray()]);
     set({ telescopes, instruments, hydrated: true });
   },
 
@@ -61,8 +61,11 @@ export const useEquipmentStore = create<EquipmentState>()((set, get) => ({
       terminals: input.terminals.length ? input.terminals : ['CMOS 相机'],
       maxPayloadKg: Number(input.maxPayloadKg) || 0,
       status: input.status,
+      owner: OWNER_PLAN,
     };
-    await persistRow('telescopes', telescope);
+    await planDb.transaction('rw', planDb.telescopes, async () => {
+      await planDb.telescopes.put(telescope);
+    });
     set({ telescopes: [...get().telescopes, telescope].sort((a, b) => a.code.localeCompare(b.code)) });
     return telescope;
   },
@@ -70,13 +73,21 @@ export const useEquipmentStore = create<EquipmentState>()((set, get) => ({
   updateTelescope: async (id, patch) => {
     const current = get().telescopes.find((telescope) => telescope.id === id);
     if (!current) return;
-    const next: Telescope = { ...current, ...patch };
-    await persistRow('telescopes', next);
+    assertOwner(current, OWNER_PLAN, '更新望远镜');
+    const next: Telescope = { ...current, ...patch, owner: OWNER_PLAN };
+    await planDb.transaction('rw', planDb.telescopes, async () => {
+      await planDb.telescopes.put(next);
+    });
     set({ telescopes: get().telescopes.map((telescope) => (telescope.id === id ? next : telescope)) });
   },
 
   removeTelescope: async (id) => {
-    await deleteRow('telescopes', id);
+    const current = get().telescopes.find((telescope) => telescope.id === id);
+    if (!current) return;
+    assertOwner(current, OWNER_PLAN, '删除望远镜');
+    await planDb.transaction('rw', planDb.telescopes, async () => {
+      await planDb.telescopes.delete(id);
+    });
     set({ telescopes: get().telescopes.filter((telescope) => telescope.id !== id) });
   },
 
@@ -90,8 +101,11 @@ export const useEquipmentStore = create<EquipmentState>()((set, get) => ({
       sensorHeightMm: Number(input.sensorHeightMm) || 0,
       readNoiseE: Number(input.readNoiseE) || 0,
       telescopeCode: input.telescopeCode,
+      owner: OWNER_PLAN,
     };
-    await persistRow('instruments', instrument);
+    await planDb.transaction('rw', planDb.instruments, async () => {
+      await planDb.instruments.put(instrument);
+    });
     set({ instruments: [...get().instruments, instrument] });
     return instrument;
   },
@@ -99,13 +113,21 @@ export const useEquipmentStore = create<EquipmentState>()((set, get) => ({
   updateInstrument: async (id, patch) => {
     const current = get().instruments.find((instrument) => instrument.id === id);
     if (!current) return;
-    const next: Instrument = { ...current, ...patch };
-    await persistRow('instruments', next);
+    assertOwner(current, OWNER_PLAN, '更新终端');
+    const next: Instrument = { ...current, ...patch, owner: OWNER_PLAN };
+    await planDb.transaction('rw', planDb.instruments, async () => {
+      await planDb.instruments.put(next);
+    });
     set({ instruments: get().instruments.map((instrument) => (instrument.id === id ? next : instrument)) });
   },
 
   removeInstrument: async (id) => {
-    await deleteRow('instruments', id);
+    const current = get().instruments.find((instrument) => instrument.id === id);
+    if (!current) return;
+    assertOwner(current, OWNER_PLAN, '删除终端');
+    await planDb.transaction('rw', planDb.instruments, async () => {
+      await planDb.instruments.delete(id);
+    });
     set({ instruments: get().instruments.filter((instrument) => instrument.id !== id) });
   },
 

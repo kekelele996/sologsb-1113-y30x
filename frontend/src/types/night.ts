@@ -1,5 +1,7 @@
-/** 观测夜 */
-export interface ObsNight {
+import type { OwnedRecord } from './ownership';
+
+/** 观测夜（归值班排程员，只存在于编排库） */
+export interface ObsNight extends OwnedRecord {
   id: string;
   /** 日期 YYYY-MM-DD */
   date: string;
@@ -44,3 +46,9 @@ export const SITE_PRESETS: Array<{ name: string; lat: number; lng: number }> = [
 /** 夜间时间轴范围（18:00 → 次日 06:00，共 720 分钟） */
 export const NIGHT_START_MINUTES = 18 * 60;
 export const NIGHT_TOTAL_MINUTES = 12 * 60;
+
+/**
+ * 单台望远镜单个观测夜的容量（分钟）：一夜时间轴总长 720 分钟。
+ * 同一台望远镜一夜内各已确认段时长之和不得超过该容量，超出的段顺延到后续观测夜。
+ */
+export const TELESCOPE_NIGHT_CAPACITY_MINUTES = NIGHT_TOTAL_MINUTES;

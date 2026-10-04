@@ -22,6 +22,7 @@ import FieldRow from '../components/common/FieldRow';
 import { usePersistentStore } from '../hooks/usePersistentStore';
 import { useTargetStore } from '../stores/targetStore';
 import { useNightStore } from '../stores/nightStore';
+import { useSessionStore } from '../stores/sessionStore';
 import { FILTER_NAMES, PRIORITIES, TARGET_COLOR, TARGET_TYPES, type FilterName, type ObsTarget, type Priority, type TargetType } from '../types';
 import { altitudeAt, formatMinutes, isBelowThreshold, moonConflict, visibilityWindow } from '../utils/astro';
 
@@ -64,6 +65,7 @@ export default function TargetsPage() {
   const removeTarget = useTargetStore((s) => s.removeTarget);
   const nights = useNightStore((s) => s.nights);
   const currentNightId = useNightStore((s) => s.currentNightId);
+  const sessions = useSessionStore((s) => s.sessions);
 
   const [typeFilter, setTypeFilter] = useState<string>('全部');
   const [priorityFilter, setPriorityFilter] = useState<string>('全部');
@@ -86,6 +88,15 @@ export default function TargetsPage() {
   }, [targets, typeFilter, priorityFilter, sortByMagnitude]);
 
   const evaluationDate = useMemo(() => new Date(`${night?.date ?? '2025-10-11'}T22:00:00`), [night?.date]);
+
+  /** 每个目标当前挂着的待重排段数（跨库只读统计，协调员在本页就能看到改动影响） */
+  const pendingCountByTarget = useMemo(() => {
+    const map = new Map<string, number>();
+    sessions.forEach((session) => {
+      if (session.status === '待重排') map.set(session.targetId, (map.get(session.targetId) ?? 0) + 1);
+    });
+    return map;
+  }, [sessions]);
 
   function openCreate() {
     setEditingId('');
@@ -127,14 +138,23 @@ export default function TargetsPage() {
       setError('赤纬需在 -90~90 度之间');
       return;
     }
-    if (editingId) {
-      await updateTarget(editingId, form);
-      setNotice(`已更新目标 ${form.name}`);
-    } else {
-      await addTarget(form);
-      setNotice(`已新增目标 ${form.name}`);
+    try {
+      setError('');
+      const result = editingId
+        ? await updateTarget(editingId, form)
+        : await addTarget(form);
+      if (result.invalidationError) {
+        setError(result.invalidationError);
+        setNotice(`已保存目标 ${form.name}${result.constraintChanged ? '（编排侧待重排标记待下次打开补核对）' : ''}`);
+      } else if (result.constraintChanged) {
+        setNotice(`已更新目标 ${form.name}：阈值 / 曝光参数变更，引用它的 ${result.invalidated} 个未拍完排程段已进入待重排，已拍完的段保持不变`);
+      } else {
+        setNotice(`${editingId ? '已更新' : '已新增'}目标 ${form.name}（未改动排程约束，不影响已排时段）`);
+      }
+      setDialogOpen(false);
+    } catch (saveError) {
+      setError(`目标库写入失败（只回滚目标库这份，编排表不受影响）：${(saveError as Error).message}`);
     }
-    setDialogOpen(false);
   }
 
   return (
@@ -143,7 +163,8 @@ export default function TargetsPage() {
         观测目标库
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        维护目标星表、视星等、推荐滤镜与曝光参数；地平高度阈值用于判断排程时是否标灰（评估时刻：夜间 22:00）。
+        目标协调员维护目标星表、视星等、推荐滤镜、曝光参数与地平高度阈值（评估时刻：夜间 22:00）。本页只写目标库，碰不到观测夜与排程段；
+        阈值或曝光一改动，引用它且尚未拍完的排程段自动进入待重排等排程员处理，已拍完的段照旧留住。
       </Typography>
 
       {notice ? (
@@ -217,7 +238,12 @@ export default function TargetsPage() {
                   <TableCell>
                     {target.filter} / {target.exposureSec}s · 累计 {target.totalMinutes}min
                   </TableCell>
-                  <TableCell align="right">{target.minAltitude}</TableCell>
+                  <TableCell align="right">
+                    {target.minAltitude}
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      约束 v{target.revision}
+                    </Typography>
+                  </TableCell>
                   <TableCell>
                     {window ? (
                       <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
@@ -232,7 +258,12 @@ export default function TargetsPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Chip size="small" color={target.priority === 'P1' ? 'error' : target.priority === 'P2' ? 'warning' : 'default'} label={target.priority} />
+                    <Stack direction="row" spacing={0.5} alignItems="center">
+                      <Chip size="small" color={target.priority === 'P1' ? 'error' : target.priority === 'P2' ? 'warning' : 'default'} label={target.priority} />
+                      {(pendingCountByTarget.get(target.id) ?? 0) > 0 ? (
+                        <Chip size="small" color="warning" variant="outlined" label={`${pendingCountByTarget.get(target.id)} 段待重排`} />
+                      ) : null}
+                    </Stack>
                   </TableCell>
                   <TableCell align="right">
                     <Button size="small" onClick={() => openEdit(target)}>
