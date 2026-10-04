@@ -26,7 +26,7 @@ docker compose down
 | UI | MUI（Material UI 5）+ Emotion |
 | 路由 | React Router 6（5 条业务路由 + 404） |
 | 状态 | Zustand（targetStore / sessionStore / equipmentStore / nightStore） |
-| 存储 | IndexedDB（Dexie，库名 `gbobsplan-db`，`schemaVersion` + v2 迁移） |
+| 存储 | IndexedDB（Dexie，库名 `gbobsplan-db`，`schemaVersion` + v2/v3 迁移） |
 | 托管 | nginx:alpine（多阶段构建，SPA try_files + gzip） |
 
 ## 本地开发
@@ -49,13 +49,13 @@ npm run build    # 类型检查 + 生产构建
 │   ├── nginx.conf             # try_files SPA 回退 + gzip
 │   ├── public/favicon.svg
 │   └── src/
-│       ├── types/             # target / session / equipment / night（+ index.ts 统一出口）
+│       ├── types/             # domain（数据归属）/ target / session / equipment / night（+ index.ts 统一出口）
 │       ├── stores/            # targetStore / sessionStore / equipmentStore / nightStore
 │       ├── components/common/ # Timeline / StatusChip / ConflictBadge / FieldRow
 │       ├── hooks/             # usePersistentStore（Dexie 读写 + Zustand 同步）/ useConflictCheck
 │       ├── pages/             # OverviewPage / TargetsPage / SessionsPage / EquipmentPage / ExportPage
 │       ├── router/index.tsx   # 路由表
-│       └── utils/             # astro.ts（高度角/可见窗口/月相）/ export.ts / id.ts
+│       └── utils/             # astro.ts（高度角/可见窗口/月相）/ scheduling.ts（容量排队）/ export.ts / id.ts
 ```
 
 ## 功能与路由
@@ -72,5 +72,8 @@ npm run build    # 类型检查 + 生产构建
 
 - 全部数据存于浏览器 IndexedDB（Dexie，库名 `gbobsplan-db`），表：`targets`、`sessions`、`telescopes`、`instruments`、`nights`、`meta`。
 - `db.version(1).stores({...})` 声明索引；`db.version(2).upgrade(...)` 为排程段增加 `backupNightId` 索引，并给旧数据补齐 `schemaVersion` 与因云取消排程段的替补夜。
+- `db.version(3).upgrade(...)` 为每条记录回填数据归属（`owner`）：观测目标归 `coordinator`（目标协调员），观测夜 / 排程段 / 望远镜 / 终端归 `scheduler`（值班排程员），并排程段补 `queued` 容量排队标记。已有数据未记归属，升级时按现有记录回填后再启用。
+- 两侧分治：目标协调员只写目标表，值班排程员只写观测夜 / 排程段 / 望远镜表，谁也改不到对方那份。目标高度阈值一改动，引用它的未完成排程段即失效并置为「待重排」（已拍完的照旧留住），等排程员重排；该失效处理走排程侧独立事务，失败只回滚排程侧，不波及目标侧已提交的改动。
+- 容量排队：同一望远镜在同一夜的排程段总时长不得超过夜容量（720 分钟），超出则顺序顺延到后续仍有容量的观测夜，已确认的排程段（待执行 / 进行中 / 已完成）不动，不挤掉已确认的段。
 - 首次打开且表为空时写入示例数据（12 个观测目标、5 个观测夜、4 台望远镜、4 台终端、14 段排程，含 1 处设备冲突与 1 条改期记录）。
 - 容器无状态：不使用数据库服务、不挂载命名卷，`docker compose down` 后数据仍留在浏览器中。

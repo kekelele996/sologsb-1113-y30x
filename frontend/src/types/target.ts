@@ -1,4 +1,6 @@
 /** 目标类型 */
+import type { DataOwner } from './domain';
+
 export type TargetType = '星系' | '星云' | '疏散星团' | '行星' | '月面';
 
 /** 观测优先级 */
@@ -10,6 +12,8 @@ export type FilterName = '无滤镜' | 'L' | 'R' | 'G' | 'B' | 'Ha' | 'OIII' | '
 /** 观测目标 */
 export interface ObsTarget {
   id: string;
+  /** 数据归属：观测目标归目标协调员维护 */
+  owner: DataOwner;
   /** 目标名（M31、NGC 7000） */
   name: string;
   /** 星表编号 */

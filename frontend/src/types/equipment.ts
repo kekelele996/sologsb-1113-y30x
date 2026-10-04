@@ -1,3 +1,5 @@
+import type { DataOwner } from './domain';
+
 /** 终端类型 */
 export type TerminalType = 'CMOS 相机' | '导星相机' | '光谱仪';
 
@@ -7,6 +9,8 @@ export type TelescopeStatus = '可用' | '维护中' | '外出';
 /** 望远镜 */
 export interface Telescope {
   id: string;
+  /** 数据归属：望远镜占用归值班排程员维护 */
+  owner: DataOwner;
   /** 编号 */
   code: string;
   /** 口径（mm） */
@@ -26,6 +30,8 @@ export interface Telescope {
 /** 终端（相机 / 导星相机 / 光谱仪） */
 export interface Instrument {
   id: string;
+  /** 数据归属：终端归值班排程员维护 */
+  owner: DataOwner;
   /** 型号 */
   model: string;
   /** 类型 */

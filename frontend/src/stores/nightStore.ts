@@ -48,6 +48,7 @@ export const useNightStore = create<NightState>()((set, get) => ({
   addNight: async (input) => {
     const night: ObsNight = {
       id: uid('night'),
+      owner: 'scheduler',
       date: input.date,
       siteName: input.siteName.trim(),
       siteLat: Number(input.siteLat) || 0,

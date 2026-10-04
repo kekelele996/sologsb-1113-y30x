@@ -36,16 +36,18 @@ export default function ExportPage() {
 
   const night = nights.find((item) => item.id === currentNightId) ?? nights[0];
   const nightSessions = useMemo(() => sessions.filter((session) => session.nightId === night?.id), [sessions, night?.id]);
+  // 待重排段尚未确认，不进入当晚观测清单
+  const confirmedSessions = useMemo(() => nightSessions.filter((session) => session.status !== '待重排'), [nightSessions]);
   const conflicts = useMemo(() => conflictsOfNight(night?.id ?? ''), [conflictsOfNight, night?.id]);
   const ids = useMemo(() => conflictIds(night?.id), [conflictIds, night?.id]);
 
   const planText = useMemo(
-    () => buildNightPlanText({ night, sessions: nightSessions, targets, telescopes, instruments }),
-    [night, nightSessions, targets, telescopes, instruments],
+    () => buildNightPlanText({ night, sessions: confirmedSessions, targets, telescopes, instruments }),
+    [night, confirmedSessions, targets, telescopes, instruments],
   );
   const csv = useMemo(
-    () => buildPlanCsv({ night, sessions: nightSessions, targets, telescopes, instruments }),
-    [night, nightSessions, targets, telescopes, instruments],
+    () => buildPlanCsv({ night, sessions: confirmedSessions, targets, telescopes, instruments }),
+    [night, confirmedSessions, targets, telescopes, instruments],
   );
 
   const bars: TimelineBar[] = useMemo(

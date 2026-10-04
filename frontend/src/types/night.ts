@@ -1,6 +1,10 @@
+import type { DataOwner } from './domain';
+
 /** 观测夜 */
 export interface ObsNight {
   id: string;
+  /** 数据归属：观测夜归值班排程员维护 */
+  owner: DataOwner;
   /** 日期 YYYY-MM-DD */
   date: string;
   /** 站点名 */

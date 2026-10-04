@@ -53,6 +53,8 @@ export default function SessionsPage() {
   const updateSession = useSessionStore((s) => s.updateSession);
   const removeSession = useSessionStore((s) => s.removeSession);
   const rescheduleToBackup = useSessionStore((s) => s.rescheduleToBackup);
+  const reschedulePending = useSessionStore((s) => s.reschedulePending);
+  const reschedulePendingBatch = useSessionStore((s) => s.reschedulePendingBatch);
   const nights = useNightStore((s) => s.nights);
   const targets = useTargetStore((s) => s.targets);
   const telescopes = useEquipmentStore((s) => s.telescopes);
@@ -74,6 +76,9 @@ export default function SessionsPage() {
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleNight, setRescheduleNight] = useState('');
   const [rescheduleReason, setRescheduleReason] = useState('');
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const [pendingNight, setPendingNight] = useState('');
+  const [pendingIds, setPendingIds] = useState<string[]>([]);
   const [form, setForm] = useState<SessionFormState>({
     nightId: '',
     targetId: '',
@@ -193,13 +198,38 @@ export default function SessionsPage() {
     setRescheduleReason('');
   }
 
+  function openPending(ids: string[]) {
+    if (ids.length === 0) return;
+    setPendingIds(ids);
+    setPendingNight(nights.find((night) => night.primary)?.id ?? nights[0]?.id ?? '');
+    setError('');
+    setPendingOpen(true);
+  }
+
+  async function submitPending() {
+    if (!pendingNight) {
+      setError('请选择排程观测夜');
+      return;
+    }
+    if (pendingIds.length === 1) {
+      await reschedulePending(pendingIds[0], pendingNight);
+      setNotice(`已将排程段重排至 ${nightById(pendingNight)?.date ?? pendingNight}（容量满则顺延下一夜）`);
+    } else {
+      const count = await reschedulePendingBatch(pendingIds, pendingNight);
+      setNotice(`已将 ${count} 个待重排段重排至 ${nightById(pendingNight)?.date ?? pendingNight}（容量满则顺延下一夜）`);
+    }
+    setSelected([]);
+    setPendingOpen(false);
+    setPendingIds([]);
+  }
+
   return (
     <Box>
       <Typography variant="h5" sx={{ mb: 0.5 }}>
         排程段列表与冲突检测
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        同一时段同一望远镜重复排入即进入冲突列表；支持勾选多个排程段批量改期到备用观测夜并填写改期原因。
+        同一时段同一望远镜重复排入即进入冲突列表；目标阈值改动会令引用它的未完成排程段进入「待重排」，可勾选后批量重排到指定观测夜（容量满则顺延下一夜，不挤掉已确认的段）。
       </Typography>
 
       {notice ? (
@@ -220,6 +250,14 @@ export default function SessionsPage() {
         </Button>
         <Button variant="outlined" color="warning" disabled={selected.length === 0} onClick={() => setRescheduleOpen(true)}>
           批量改期到备用夜（已选 {selected.length}）
+        </Button>
+        <Button
+          variant="outlined"
+          color="info"
+          disabled={selected.filter((id) => sessions.find((session) => session.id === id)?.status === '待重排').length === 0}
+          onClick={() => openPending(selected.filter((id) => sessions.find((session) => session.id === id)?.status === '待重排'))}
+        >
+          批量重排待重排段（{selected.filter((id) => sessions.find((session) => session.id === id)?.status === '待重排').length}）
         </Button>
         <TextField select size="small" label="观测夜" value={nightFilter} onChange={(event) => setNightFilter(event.target.value)} sx={{ minWidth: 200 }}>
           {['全部', ...nights.map((night) => night.id)].map((id) => (
@@ -319,14 +357,24 @@ export default function SessionsPage() {
                     {session.backupNightId ? (
                       <Chip size="small" variant="outlined" label={`替补 ${nightById(session.backupNightId)?.date ?? session.backupNightId}`} sx={{ ml: 0.5 }} />
                     ) : null}
+                    {session.queued ? (
+                      <Chip size="small" color="info" variant="outlined" label="排队至下一夜" sx={{ ml: 0.5 }} />
+                    ) : null}
                   </TableCell>
                   <TableCell align="right">
-                    <Button size="small" onClick={() => openEdit(session.id)}>
-                      编辑
-                    </Button>
-                    <Button size="small" color="error" onClick={() => void removeSession(session.id)}>
-                      删除
-                    </Button>
+                    <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      {session.status === '待重排' ? (
+                        <Button size="small" color="info" onClick={() => openPending([session.id])}>
+                          重排
+                        </Button>
+                      ) : null}
+                      <Button size="small" onClick={() => openEdit(session.id)}>
+                        编辑
+                      </Button>
+                      <Button size="small" color="error" onClick={() => void removeSession(session.id)}>
+                        删除
+                      </Button>
+                    </Stack>
                   </TableCell>
                 </TableRow>
               );
@@ -463,6 +511,31 @@ export default function SessionsPage() {
           <Button onClick={() => setRescheduleOpen(false)}>取消</Button>
           <Button variant="contained" color="warning" onClick={() => void submitReschedule()}>
             确认改期
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={pendingOpen} onClose={() => setPendingOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>重排待重排段</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 1.5 }}>
+            目标高度阈值调整后，{pendingIds.length} 个引用该目标的排程段已失效（待重排）。选择要排到的观测夜；
+            若该望远镜本夜各段总时长超出容量，会自动顺延到后续仍有容量的观测夜，不挤掉已确认的段。
+          </Alert>
+          <FieldRow label="排程观测夜" required>
+            <TextField select size="small" fullWidth value={pendingNight} onChange={(event) => setPendingNight(event.target.value)}>
+              {nights.map((night) => (
+                <MenuItem key={night.id} value={night.id}>
+                  {`${night.date} · ${night.siteName}${night.primary ? '（主夜）' : night.backup ? '（备用夜）' : ''}`}
+                </MenuItem>
+              ))}
+            </TextField>
+          </FieldRow>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingOpen(false)}>取消</Button>
+          <Button variant="contained" color="info" onClick={() => void submitPending()}>
+            确认重排
           </Button>
         </DialogActions>
       </Dialog>

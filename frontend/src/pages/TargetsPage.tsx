@@ -128,8 +128,14 @@ export default function TargetsPage() {
       return;
     }
     if (editingId) {
-      await updateTarget(editingId, form);
-      setNotice(`已更新目标 ${form.name}`);
+      const result = await updateTarget(editingId, form);
+      if (result.invalidationError) {
+        setNotice(`已更新目标 ${form.name}，但排程侧失效处理失败：${result.invalidationError}（目标改动已独立提交，未回滚）`);
+      } else if (result.invalidatedCount > 0) {
+        setNotice(`已更新目标 ${form.name}，${result.invalidatedCount} 个引用该目标的排程段已置为「待重排」，等排程员重排`);
+      } else {
+        setNotice(`已更新目标 ${form.name}`);
+      }
     } else {
       await addTarget(form);
       setNotice(`已新增目标 ${form.name}`);
@@ -305,7 +311,7 @@ export default function TargetsPage() {
               ))}
             </TextField>
           </FieldRow>
-          <FieldRow label="最小地平高度(°)" required hint="低于该值排程时自动标灰">
+          <FieldRow label="最小地平高度(°)" required hint="低于该值排程时自动标灰；改动后引用该目标的未完成排程段会失效，转入「待重排」等排程员重排">
             <TextField size="small" type="number" fullWidth value={form.minAltitude} onChange={(event) => setForm({ ...form, minAltitude: Number(event.target.value) })} />
           </FieldRow>
           <FieldRow label="备注">

@@ -54,6 +54,7 @@ export const useEquipmentStore = create<EquipmentState>()((set, get) => ({
   addTelescope: async (input) => {
     const telescope: Telescope = {
       id: uid('tel'),
+      owner: 'scheduler',
       code: input.code.trim(),
       apertureMm: Number(input.apertureMm) || 0,
       focalLengthMm: Number(input.focalLengthMm) || 0,
@@ -83,6 +84,7 @@ export const useEquipmentStore = create<EquipmentState>()((set, get) => ({
   addInstrument: async (input) => {
     const instrument: Instrument = {
       id: uid('ins'),
+      owner: 'scheduler',
       model: input.model.trim(),
       terminalType: input.terminalType,
       pixelSizeUm: Number(input.pixelSizeUm) || 0,

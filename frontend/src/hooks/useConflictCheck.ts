@@ -48,6 +48,7 @@ export function useConflictCheck(): ConflictCheckApi {
     (input: ConflictCheckInput): ConflictItem[] => {
       const candidate: ObsSession = {
         id: input.ignoreSessionId ?? '__candidate__',
+        owner: 'scheduler',
         nightId: input.nightId,
         targetId: '',
         startTime: input.startTime,
